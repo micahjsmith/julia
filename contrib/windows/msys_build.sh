@@ -137,6 +137,7 @@ else
 
   f=llvm-3.3-$ARCH-msvc12-juliadeps.7z
 fi
+echo "override JULIA_THREADS = 4" >> Make.user
 
 checksum_download \
     "$f" "https://bintray.com/artifact/download/tkelman/generic/$f"

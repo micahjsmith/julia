@@ -89,6 +89,7 @@ before_install:
         TESTSTORUN="all --skip linalg/triangular subarray"; fi # TODO: re enable these if possible without timing out
     - git clone -q git://git.kitenet.net/moreutils
 script:
+    - export BUILDOPTS="$BUILDOPTS JULIA_THREADS=4";
     - make -C moreutils mispipe
     - make $BUILDOPTS -C base version_git.jl.phony
     - moreutils/mispipe "make $BUILDOPTS NO_GIT=1 -C deps" bar > deps.log || cat deps.log
