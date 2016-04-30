@@ -428,7 +428,9 @@ Text I/O
 
    .. Docstring generated from Julia source
 
-   Show a more compact representation of a value. This is used for printing array elements. If a new type has a different compact representation, it should test ``Base.limit_output(io)`` in its normal ``show`` method.
+   Show a compact representation of a value.
+
+   This is used in particular for printing array elements. To offer a compact representation, a type ``T`` should test ``limit_output(io)`` in the normal ``show(io, x::T)`` method. A compact representation should skip any type information, which would be redundant with that printed once for the whole array.
 
 .. function:: showall(x)
 
@@ -659,7 +661,9 @@ Text I/O
 
    .. Docstring generated from Julia source
 
-   Output hinting for identifying contexts where the user requested a compact output
+   Indicates whether the user requested a compact output for ``io``\ .
+
+   This is used in particular for printing array elements. To offer a compact representation, a type ``T`` should test ``limit_output(io)`` in the normal ``show(io, x::T)`` method. A compact representation should skip any type information, which would be redundant with that printed once for the whole array.
 
 Multimedia I/O
 --------------
