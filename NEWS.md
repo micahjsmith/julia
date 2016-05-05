@@ -155,6 +155,12 @@ Library improvements
 
   * The new `Base.StackTraces` module makes stack traces easier to use programmatically. ([#14469])
 
+  * System reflection is now more consistently exposed from Sys and not Base.
+    `OS_NAME` has been replaced by `Sys.KERNEL` and always reports the name of the kernel (as reported by `uname`).
+    The `@windows_only` and `@osx` family of macros have been replaced with functions such as `is_windows()` and
+    or `is_apple()`. There's now also an `@static` macro that will evaluate the condition of an if-statement at
+    compile time, for when a static branch is required.
+
 Deprecated or removed
 ---------------------
 

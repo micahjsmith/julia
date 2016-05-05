@@ -32,7 +32,7 @@ eval(Expr(:function, Expr(:call, :test_inline_1),
                      Expr(:call, :throw, "foo"))))
 
 # different-file inline
-const absfilepath = OS_NAME == :Windows ? "C:\\foo\\bar\\baz.jl" : "/foo/bar/baz.jl"
+const absfilepath = is_windows() ? "C:\\foo\\bar\\baz.jl" : "/foo/bar/baz.jl"
 eval(Expr(:function, Expr(:call, :test_inline_2),
                      Expr(:block, LineNumberNode(Symbol("backtrace.jl"), 99),
                      LineNumberNode(Symbol("foobar.jl"), 666),
