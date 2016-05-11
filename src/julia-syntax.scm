@@ -396,15 +396,28 @@
                   sparams))
          (keyword-sparam-names
           (map (lambda (s) (if (symbol? s) s (cadr s))) keyword-sparams)))
-    (let ((kw (gensy)) (i (gensy)) (ii (gensy)) (elt (gensy)) (rkw (gensy))
-          (mangled (symbol (string "#" (if name (undot-name name) 'call) "#"
+    (let* ((kw (gensy)) (i (gensy)) (ii (gensy)) (elt (gensy)) (rkw (gensy))
+           (mangled (symbol (string "#" (if name (undot-name name) 'call) "#"
                                    (string (current-julia-module-counter)))))
-          (flags (map (lambda (x) (gensy)) vals))
-          (static-keys-sp (gensy)) (func-arg (gensy))
-          ;; avoid prefixing an argument name with # since the frontend will rename it
-          ;; and we'll loose track of it between the staged function and the generated code
-          (kw-static (symbol (string "kw" (gensy))))
-          (rt-rkw (gensy)))
+           (flags (map (lambda (x) (gensy)) vals))
+           ;; remove sparams that don't occur, to avoid printing the warning twice
+           (used-sparams
+            (filter
+             (lambda (s) (let ((name (if (symbol? s) s (cadr s))))
+                           (expr-contains-eq name (cons 'list argl))))
+             positional-sparams))
+           ;; specific to the static sorting :
+           (static-keys-sp (gensy))
+           ;; avoid prefixing an argument name with # since the frontend will rename it
+           ;; and we'll loose track of it between the staged function and the generated code
+           (kw-static (symbol (string "kw" (gensy))))
+           (func-arg (symbol (string "f" (gensy))))
+           (rt-rkw (gensy)) (static-stmts (gensy))
+           ;; do we need to initialize defaults into slots because they can depend on each other
+           ;; we could do that only up until the last non const default
+           (needs-separate-init (not (every const-default? vals)))
+           ;; can we get away with a single function call in the generated code
+           (needs-stmts (or needs-separate-init (not (null? restkw)))))
       `(block
         ;; call with no keyword args
         ,(method-def-expr-
@@ -450,10 +463,7 @@
         ;; call with unsorted keyword args. this sorts and re-dispatches.
         ,(method-def-expr-
           name
-          (filter ;; remove sparams that don't occur, to avoid printing the warning twice
-           (lambda (s) (let ((name (if (symbol? s) s (cadr s))))
-                         (expr-contains-eq name (cons 'list argl))))
-           positional-sparams)
+          used-sparams
           `((|::|
              ;; if there are optional positional args, we need to be able to reference the function name
              ,(if (any kwarg? pargl) (gensy) UNUSED)
@@ -525,18 +535,14 @@
                           ,@(if (null? vararg) '()
                                 (list `(... ,(arg-name (car vararg))))))))
           #f)
-        ;; static version of the above
+        ;; staged version of the above
         ,(method-def-expr-
           name
-          (cons static-keys-sp
-                (filter ;; remove sparams that don't occur, to avoid printing the warning twice
-                 (lambda (s) (let ((name (if (symbol? s) s (cadr s))))
-                               (expr-contains-eq name (cons 'list argl))))
-                 positional-sparams))
+          (cons static-keys-sp used-sparams)
           `((|::|
              ;; if there are optional positional args or varargs, we need to be able to reference the function name
              ,(if (or (any kwarg? pargl) vararg) func-arg UNUSED)
-             (call (|.| Core 'kwftype) ,ftype)) (|::| ZZZZ (call (top apply_type) (top KwSorted) ,static-keys-sp)) (|::| ,kw-static Any) ,@pargl ,@vararg)
+             (call (|.| Core 'kwftype) ,ftype)) (|::| UNUSED (call (top apply_type) (top KwSorted) ,static-keys-sp)) (|::| ,kw-static Any) ,@pargl ,@vararg)
           `(block
             (line 0 || ||)
             ;; initialize keyword args to their defaults, or set a flag telling
@@ -546,8 +552,8 @@
                          `(= ,name (inert ,dflt 0))
                          `(= ,flag true)))
                    keynames vals flags)
-            ,@(if (null? restkw) '()
-                  `((= ,rkw (cell1d))))
+            ,@(if (not needs-stmts) '()
+                  `((= ,static-stmts (cell1d))))
             (for (= ,i (: 1 (call (top length) ,static-keys-sp)))
                  (block
                   (= ,elt (|.| ,static-keys-sp ,i))
@@ -570,10 +576,12 @@
                                              rval0)))
                               ;; if kw[ii] == 'k; k = kw[ii+1]::Type; end
                               (begin
-                                (princ rval0 " :: " kw "\n")
                                 `(if (comparison ,elt === (quote ,(decl-var k)))
                                      (block
-                                      (= ,(decl-var k) ,(julia-bq-expand rval 0))
+                                      ,@(if needs-separate-init
+                                            `((= ,(decl-var k) (inert ,(decl-var k)))
+                                              (ccall 'jl_cell_1d_push Void (tuple Any Any) ,static-stmts ,(julia-bq-expand `(= ,(decl-var k) ,rval) 0)))
+                                            `((= ,(decl-var k) ,(julia-bq-expand rval 0))))
                                       ,@(if (not (const-default? (cadr kvf)))
                                             `((= ,(caddr kvf) false))
                                             '()))
@@ -583,7 +591,7 @@
                               `(call (top kwerr) ,elt)
                               ;; otherwise add to rest keywords
                               `(ccall 'jl_cell_1d_push Void (tuple Any Any)
-                                      ,rkw
+                                      ,static-stmts
                                       ,(julia-bq-expand `(ccall 'jl_cell_1d_push Void (tuple Any Any)
                                                                 ,rt-rkw (tuple (inert ($ ,elt))
                                                                                (|.| ,kw-static ($ ,i)))) 0)))
@@ -595,20 +603,20 @@
                                 '()
                                 `((if ,flag (= ,name (inert ,dflt))))))
                           keynames vals flags))
-            ;; finally, call the core function
-            (return ,(julia-bq-expand
-                      `(block
-                        ,@(if (null? restkw) '()
-                              `((= ,rt-rkw (cell1d))
-                                ($ (... ,rkw))))
-                        (call
-                         ,mangled
-                         ,@(map (lambda (n) `($ ,n)) keynames)
-                         ,@(if (null? restkw) '() (list rt-rkw))
-                         ,func-arg
-                         ,@(map arg-name (cdr pargl))
-                         ,@(if (null? vararg) '()
-                               (list `(... ,(arg-name (car vararg))))))) 0)))
+            ;; finally, generate the code
+            (return
+             ,(julia-bq-expand
+               `(block
+                 ,@(if (null? restkw) '() `((= ,rt-rkw (cell1d))))
+                 ,@(if needs-stmts `(($ (... ,static-stmts)) '()))
+                 (return (call
+                          ,mangled
+                          ,@(map (lambda (n) `($ ,n)) keynames)
+                          ,@(if (null? restkw) '() (list rt-rkw))
+                          ,func-arg
+                          ,@(map arg-name (cdr pargl))
+                          ,@(if (null? vararg) '()
+                                (list `(... ,(arg-name (car vararg)))))))) 0)))
           #t)
 
         ;; return primary function
@@ -1641,7 +1649,7 @@
    (lambda (e) ; e = (|.| f x)
      (let ((f (expand-forms (cadr e)))
            (x (expand-forms (caddr e))))
-       (if (or (eq? (car x) 'quote) (eq? (car x) 'inert) (eq? (car x) '$))
+       (if (or (not (pair? x)) (eq? (car x) 'quote) (eq? (car x) 'inert) (eq? (car x) '$))
          `(call (top getfield) ,f ,x)
          ; otherwise, came from f.(args...) --> broadcast(f, args...),
          ; where x = (call (top tuple) args...) at this point:
