@@ -322,6 +322,9 @@ Array{T}(::Type{T}, m::Int)               = Array{T,1}(m)
 Array{T}(::Type{T}, m::Int,n::Int)        = Array{T,2}(m,n)
 Array{T}(::Type{T}, m::Int,n::Int,o::Int) = Array{T,3}(m,n,o)
 
+immutable KwSorted{K}
+end
+
 # docsystem basics
 macro doc(x...)
     atdoc(x...)
@@ -340,10 +343,10 @@ module TopModule
     # that are usually inherited from Core, but could be defined custom for a module
     using Core: Box, IntrinsicFunction, Builtin,
             arrayref, arrayset, arraysize,
-            _expr, _apply, typeassert, apply_type, svec, kwfunc
+            _expr, _apply, typeassert, apply_type, svec, kwfunc, KwSorted
     export Box, IntrinsicFunction, Builtin,
             arrayref, arrayset, arraysize,
-            _expr, _apply, typeassert, apply_type, svec, kwfunc
+            _expr, _apply, typeassert, apply_type, svec, kwfunc, KwSorted
 end
 using .TopModule
 ccall(:jl_set_istopmod, Void, (Bool,), true)

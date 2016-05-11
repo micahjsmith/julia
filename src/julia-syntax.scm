@@ -399,7 +399,12 @@
     (let ((kw (gensy)) (i (gensy)) (ii (gensy)) (elt (gensy)) (rkw (gensy))
           (mangled (symbol (string "#" (if name (undot-name name) 'call) "#"
                                    (string (current-julia-module-counter)))))
-          (flags (map (lambda (x) (gensy)) vals)))
+          (flags (map (lambda (x) (gensy)) vals))
+          (static-keys-sp (gensy)) (func-arg (gensy))
+          ;; avoid prefixing an argument name with # since the frontend will rename it
+          ;; and we'll loose track of it between the staged function and the generated code
+          (kw-static (symbol (string "kw" (gensy))))
+          (rt-rkw (gensy)))
       `(block
         ;; call with no keyword args
         ,(method-def-expr-
@@ -520,6 +525,92 @@
                           ,@(if (null? vararg) '()
                                 (list `(... ,(arg-name (car vararg))))))))
           #f)
+        ;; static version of the above
+        ,(method-def-expr-
+          name
+          (cons static-keys-sp
+                (filter ;; remove sparams that don't occur, to avoid printing the warning twice
+                 (lambda (s) (let ((name (if (symbol? s) s (cadr s))))
+                               (expr-contains-eq name (cons 'list argl))))
+                 positional-sparams))
+          `((|::|
+             ;; if there are optional positional args or varargs, we need to be able to reference the function name
+             ,(if (or (any kwarg? pargl) vararg) func-arg UNUSED)
+             (call (|.| Core 'kwftype) ,ftype)) (|::| ZZZZ (call (top apply_type) (top KwSorted) ,static-keys-sp)) (|::| ,kw-static Any) ,@pargl ,@vararg)
+          `(block
+            (line 0 || ||)
+            ;; initialize keyword args to their defaults, or set a flag telling
+            ;; whether this keyword needs to be set.
+            ,@(map (lambda (name dflt flag)
+                     (if (const-default? dflt)
+                         `(= ,name (inert ,dflt 0))
+                         `(= ,flag true)))
+                   keynames vals flags)
+            ,@(if (null? restkw) '()
+                  `((= ,rkw (cell1d))))
+            (for (= ,i (: 1 (call (top length) ,static-keys-sp)))
+                 (block
+                  (= ,elt (|.| ,static-keys-sp ,i))
+                  ,(foldl (lambda (kvf else)
+                            (let* ((k    (car kvf))
+                                   (rval0 `(|.| ,kw-static ($ ,i)))
+                                   ;; note: if the "declared" type of a KW arg
+                                   ;; includes something from keyword-sparam-names,
+                                   ;; then don't assert it here, since those static
+                                   ;; parameters don't have values yet.
+                                   ;; instead, the type will be picked up when the
+                                   ;; underlying method is called.
+                                   (rval (if (and (decl? k)
+                                                  (not (any (lambda (s)
+                                                              (expr-contains-eq s (caddr k)))
+                                                            keyword-sparam-names)))
+                                             `(call (top typeassert)
+                                                    ,rval0
+                                                    ,(caddr k))
+                                             rval0)))
+                              ;; if kw[ii] == 'k; k = kw[ii+1]::Type; end
+                              (begin
+                                (princ rval0 " :: " kw "\n")
+                                `(if (comparison ,elt === (quote ,(decl-var k)))
+                                     (block
+                                      (= ,(decl-var k) ,(julia-bq-expand rval 0))
+                                      ,@(if (not (const-default? (cadr kvf)))
+                                            `((= ,(caddr kvf) false))
+                                            '()))
+                                     ,else))))
+                          (if (null? restkw)
+                              ;; if no rest kw, give error for unrecognized
+                              `(call (top kwerr) ,elt)
+                              ;; otherwise add to rest keywords
+                              `(ccall 'jl_cell_1d_push Void (tuple Any Any)
+                                      ,rkw
+                                      ,(julia-bq-expand `(ccall 'jl_cell_1d_push Void (tuple Any Any)
+                                                                ,rt-rkw (tuple (inert ($ ,elt))
+                                                                               (|.| ,kw-static ($ ,i)))) 0)))
+                          (map list vars vals flags))))
+            ;; set keywords that weren't present to their default values
+            ,@(apply append
+                     (map (lambda (name dflt flag)
+                            (if (const-default? dflt)
+                                '()
+                                `((if ,flag (= ,name (inert ,dflt))))))
+                          keynames vals flags))
+            ;; finally, call the core function
+            (return ,(julia-bq-expand
+                      `(block
+                        ,@(if (null? restkw) '()
+                              `((= ,rt-rkw (cell1d))
+                                ($ (... ,rkw))))
+                        (call
+                         ,mangled
+                         ,@(map (lambda (n) `($ ,n)) keynames)
+                         ,@(if (null? restkw) '() (list rt-rkw))
+                         ,func-arg
+                         ,@(map arg-name (cdr pargl))
+                         ,@(if (null? vararg) '()
+                               (list `(... ,(arg-name (car vararg))))))) 0)))
+          #t)
+
         ;; return primary function
         ,(if (or (not (symbol? name)) (is-call-name? name))
              '(null) name)))))
