@@ -1431,20 +1431,21 @@
       (error "more than one semicolon in argument list"))
   (receive
    (keys restkeys) (separate kwarg? kw)
-   (let ((keyargs (apply append
-                         (map (lambda (a)
+   (let ((keyargs (map (lambda (a)
                                 (if (not (symbol? (cadr a)))
                                     (error (string "keyword argument is not a symbol: \""
                                                    (deparse (cadr a)) "\"")))
                                 (if (vararg? (caddr a))
                                     (error "splicing with \"...\" cannot be used for a keyword argument value"))
                                 `((quote ,(cadr a)) ,(caddr a)))
-                              keys))))
+                              keys)))
      (if (null? restkeys)
-         `(call (call (top kwfunc) ,f) (cell1d ,@keyargs) ,f ,@pa)
+         `(call (call (top kwfunc) ,f)
+                (call (call (top apply_type) (top KwSorted) (call (top tuple) ,@(map car keyargs))))
+                (call (top tuple) ,@(map cadr keyargs)) ,f ,@pa)
          (let ((container (make-ssavalue)))
            `(block
-             (= ,container (cell1d ,@keyargs))
+             (= ,container (cell1d ,@(apply append keyargs)))
              ,@(map (lambda (rk)
                       (let* ((k (make-ssavalue))
                              (v (make-ssavalue))

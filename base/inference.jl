@@ -2169,7 +2169,7 @@ function exprtype(x::ANY, sv::InferenceState)
 end
 
 # known affect-free calls (also effect-free)
-const _pure_builtins = Any[tuple, svec, fieldtype, apply_type, is, isa, typeof]
+const _pure_builtins = Any[tuple, svec, fieldtype, apply_type, is, isa, typeof, Core.kwfunc]
 
 # known effect-free calls (might not be affect-free)
 const _pure_builtins_volatile = Any[getfield, arrayref]
