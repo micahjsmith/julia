@@ -370,12 +370,16 @@ iteratorsize{I1,I2}(::Type{Prod{I1,I2}}) = prod_iteratorsize(iteratorsize(I1),it
     ((x[1][1],x[1][2]...), x[2])
 end
 
-prod_iteratorsize(::Union{HasLength,HasShape}, ::Union{HasLength,HasShape}) = HasLength()
+prod_iteratorsize(::Union{HasLength,HasShape}, ::Union{HasLength,HasShape}) = HasShape()
 prod_iteratorsize(a, ::IsInfinite) = IsInfinite() # products can have an infinite last iterator (which moves slowest)
 prod_iteratorsize(a, b) = SizeUnknown()
 
-_size(p::Prod2) = (length(p.a), length(p.b))
-_size(p::Prod) = (length(p.a), _size(p.b)...)
+it_size(it) = it_size(it, iteratorsize(it))
+it_size(it, ::HasLength) = (length(it),)
+it_size(it, ::HasShape) = size(it)
+
+size(p::Prod2) = (it_size(p.a)..., it_size(p.b)...)
+size(p::Prod) = (it_size(p.a)..., size(p.b)...)
 
 """
     IteratorND(iter, dims)
@@ -396,7 +400,6 @@ immutable IteratorND{I,N}
         end
         new{I,N}(iter, shape)
     end
-    (::Type{IteratorND}){I<:AbstractProdIterator}(p::I) = IteratorND(p, _size(p))
 end
 
 start(i::IteratorND) = start(i.iter)
