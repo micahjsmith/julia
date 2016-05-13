@@ -607,17 +607,13 @@ getindex(x::AbstractSparseVector, ::Colon) = copy(x)
 
 ### show and friends
 
-function showarray(io::IO, x::AbstractSparseVector;
-                   header::Bool=true, repr=false)
-
+function show(io::IO, x::AbstractSparseVector)
     n = length(x)
     nzind = nonzeroinds(x)
     nzval = nonzeros(x)
     xnnz = length(nzind)
 
-    if header
-        println(io, summary(x))
-    end
+    println(io, summary(x))
 
     limit::Bool = Base.limit_output(io)
     half_screen_rows = limit ? div(displaysize(io)[1] - 8, 2) : typemax(Int)
@@ -638,9 +634,6 @@ function summary(x::AbstractSparseVector)
     string("Sparse vector of length ", length(x), " with ", length(nonzeros(x)),
            " ",  eltype(x), " nonzero entries:")
 end
-
-show(io::IO, x::AbstractSparseVector) = showarray(io, x)
-writemime(io::IO, ::MIME"text/plain", x::AbstractSparseVector) = show(IOContext(io, :limit_output => true), x)
 
 ### Conversion to matrix
 

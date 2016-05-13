@@ -61,7 +61,9 @@ CPUinfo(info::UV_cpu_info_t) = CPUinfo(bytestring(info.model), info.speed,
     info.cpu_times!user, info.cpu_times!nice, info.cpu_times!sys,
     info.cpu_times!idle, info.cpu_times!irq)
 
-function show(io::IO, info::CPUinfo, header::Bool=true, prefix::AbstractString="    ")
+show(io::IO, info::CPUinfo) = show_cpuinfo(io, info, true, "    ")
+
+function show_cpuinfo(io::IO, info::CPUinfo, header::Bool, prefix::AbstractString)
     tck = SC_CLK_TCK
     if header
         println(io, info.model, ": ")
@@ -85,7 +87,7 @@ function _cpu_summary(io::IO, cpu::Array{CPUinfo}, i, j)
         header = true
         for x = i:j
             if header == false println(io) end
-            show(io,cpu[x],header,"#$(x-i+1) ")
+            show_cpuinfo(io,cpu[x],header,"#$(x-i+1) ")
             header = false
         end
     else
@@ -100,7 +102,7 @@ function _cpu_summary(io::IO, cpu::Array{CPUinfo}, i, j)
             summary.cpu_times!irq += cpu[x].cpu_times!irq
         end
         summary.speed = div(summary.speed,count)
-        show(io,summary,true,"#1-$(count) ")
+        show_cpuinfo(io,summary,true,"#1-$(count) ")
     end
     println(io)
 end

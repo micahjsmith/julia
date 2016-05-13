@@ -47,6 +47,12 @@ end
 
 function show(io::IO, t::Task)
     print(io, "Task ($(t.state)) @0x$(hex(convert(UInt, pointer_from_objref(t)), WORD_SIZE>>2))")
+    if get(io, :interactive, false)
+        if t.state == :failed
+            println(io)
+            showerror(io, CapturedException(t.result, t.backtrace))
+        end
+    end
 end
 
 macro task(ex)

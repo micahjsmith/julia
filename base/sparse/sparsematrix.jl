@@ -76,12 +76,9 @@ convenient iterating over a sparse matrix :
 """
 nzrange(S::SparseMatrixCSC, col::Integer) = S.colptr[col]:(S.colptr[col+1]-1)
 
-function Base.showarray(io::IO, S::SparseMatrixCSC;
-                   header::Bool=true, repr=false)
+function Base.show(io::IO, S::SparseMatrixCSC)
     # TODO: repr?
-    if header
-        print(io, S.m, "×", S.n, " sparse matrix with ", nnz(S), " ", eltype(S), " nonzero entries:")
-    end
+    print(io, S.m, "×", S.n, " sparse matrix with ", nnz(S), " ", eltype(S), " nonzero entries:")
 
     limit::Bool = Base.limit_output(io)
     if limit

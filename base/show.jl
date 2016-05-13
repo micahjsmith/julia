@@ -128,11 +128,27 @@ function is_exported_from_stdlib(name::Symbol, mod::Module)
 end
 
 function show(io::IO, f::Function)
-    mt = typeof(f).name.mt
-    if !isdefined(mt, :module) || is_exported_from_stdlib(mt.name, mt.module) || mt.module === Main
-        print(io, mt.name)
+    ft = typeof(f)
+    mt = ft.name.mt
+    if get(io, :interactive, false)
+        if isa(f, Builtin)
+            print(io, mt.name, " (built-in function)")
+        else
+            name = mt.name
+            isself = isdefined(ft.name.module, name) &&
+                     ft == typeof(getfield(ft.name.module, name))
+            n = length(mt)
+            m = n==1 ? "method" : "methods"
+            ns = isself ? string(name) : string("(::", name, ")")
+            what = startswith(ns, '@') ? "macro" : "generic function"
+            print(io, ns, " (", what, " with $n $m)")
+        end
     else
-        print(io, mt.module, ".", mt.name)
+        if !isdefined(mt, :module) || is_exported_from_stdlib(mt.name, mt.module) || mt.module === Main
+            print(io, mt.name)
+        else
+            print(io, mt.module, ".", mt.name)
+        end
     end
 end
 
@@ -1428,14 +1444,15 @@ function print_matrix_repr(io, X::AbstractArray)
     end
 end
 
-# NOTE: this is a possible, so-far-unexported function, providing control of
-# array output. Not sure I want to do it this way.
-showarray(X::AbstractArray; kw...) = showarray(STDOUT, X; kw...)
-function showarray(io::IO, X::AbstractArray;
-                   header::Bool=true, repr=false)
-    header && print(io, summary(X))
+function show(io::IO, X::AbstractArray)
+    repr = !get(io, :interactive, false)
+    if !repr && limit_output(io) && eltype(X) === Method
+        # override usual show method for Vector{Method}: don't abbreviate long lists
+        io = IOContext(io, :limit_output => false)
+    end
+    !repr && print(io, summary(X))
     if !isempty(X)
-        header && println(io, ":")
+        !repr && println(io, ":")
         if ndims(X) == 0
             if isassigned(X)
                 return showcompact_lim(io, X[])
@@ -1455,14 +1472,12 @@ function showarray(io::IO, X::AbstractArray;
                 print_matrix(io, X, punct...)
             else
                 show_nd(io, X,
-                        (io, slice) -> print_matrix(io, slice, punct...),
-                        !repr)
+                (io, slice) -> print_matrix(io, slice, punct...),
+                !repr)
             end
         end
     end
 end
-
-show(io::IO, X::AbstractArray) = showarray(io, X, header=limit_output(io), repr=!limit_output(io))
 
 showall(x) = showall(STDOUT, x)
 function showall(io::IO, x)
