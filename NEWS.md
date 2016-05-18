@@ -160,6 +160,9 @@ Library improvements
 
   * There is now a default no-op `flush(io)` function for all `IO` types ([#16403]).
 
+  * The `libjulia` library is now properly versioned and installed to the public `<prefix>/lib`
+    directory, instead of the private `<prefix>/lib/julia` directory.
+
 Deprecated or removed
 ---------------------
 
