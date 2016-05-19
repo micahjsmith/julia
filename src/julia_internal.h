@@ -153,7 +153,7 @@ JL_CALLABLE(jl_f_intrinsic_call);
 extern jl_function_t *jl_unprotect_stack_func;
 void jl_install_default_signal_handlers(void);
 void restore_signals(void);
-void *jl_install_thread_signal_handler(void);
+void jl_install_thread_signal_handler(void);
 
 jl_fptr_t jl_get_builtin_fptr(jl_value_t *b);
 
