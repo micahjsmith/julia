@@ -268,13 +268,11 @@ end
 
 function send_connection_hdr(w::Worker, cookie=true)
     # For a connection initiated from the remote side to us, we only send the version,
-    # else, when we initiate a connection we send both our version and the cookie.
+    # else when we initiate a connection we first send the cookie followed by our version.
     # The remote side validates the cookie.
 
     if cookie
         write(w.w_stream, LPROC.cookie)
-    else
-        write(w.w_stream, rpad("", HDR_COOKIE_LEN))
     end
     write(w.w_stream, rpad(VERSION_STRING, HDR_VERSION_LEN)[1:HDR_VERSION_LEN])
 end
@@ -1045,8 +1043,8 @@ function message_handler_loop(r_stream::IO, w_stream::IO, incoming::Bool)
 end
 
 function process_hdr(s, validate_cookie)
-    cookie = read(s, HDR_COOKIE_LEN)
     if validate_cookie
+        cookie = read(s, HDR_COOKIE_LEN)
         self_cookie = cluster_cookie()
         for i in 1:HDR_COOKIE_LEN
             if UInt8(self_cookie[i]) != cookie[i]
@@ -1418,15 +1416,17 @@ function create_worker(manager, wconfig)
 
     # send address information of all workers to the new worker.
     # Cluster managers set the address of each worker in `WorkerConfig.connect_at`.
-    # A new worker uses this to setup a all-to-all network. Workers with higher pids connect to
-    # workers with lower pids. Except process 1 (master) which initiates connections
-    # to all workers.
-    # Flow:
-    # - master sends (:join_pgrp, list_of_all_worker_addresses) to all workers
+    # A new worker uses this to setup a all-to-all network if topology :all_to_all is specifid.
+    # Workers with higher pids connect to workers with lower pids. Except process 1 (master) which
+    # initiates connections to all workers.
+
+    # Connection Setup Protocol:
+    # - Master sends 16-byte cookie followed by 16-byte version string and a JoinPGRP message to all workers
     # - On each worker
-    #   - each worker sends a :identify_socket to all workers less than its pid
-    #   - each worker then sends a :join_complete back to the master along with its OS_PID and NUM_CORES
-    # - once master receives a :join_complete it triggers rr_ntfy_join (signifies that worker setup is complete)
+    #   - Worker responds with a 16-byte version followed by a JoinCompleteMsg
+    #   - Connects to all workers less than its pid. Sends the cookie, version and an IdentifySocket message
+    #   - Workers with incoming connection requests write back their Version and an IdentifySocketAckMsg message
+    # - On master, receiving a JoinCompleteMsg triggers rr_ntfy_join (signifies that worker setup is complete)
 
     join_list = []
     if PGRP.topology == :all_to_all
